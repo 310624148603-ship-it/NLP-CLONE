@@ -1,0 +1,162 @@
+{
+  "_schema_meta": {
+    "schema_id": "ULS-v1.0.0",
+    "description": "Universal Legal Schema — jurisdiction-swappable traffic penalty ontology",
+    "active_jurisdiction": "IN_TN",
+    "swap_mechanism": "Replace 'jurisdiction_context' block via JSONL hot-swap; all downstream agents re-resolve on next tick.",
+    "last_validated_against": "MoRTH Gazette S.O. 2224(E) dated 2019-09-01; TN Home Dept G.O.(Ms).No.56 dated 2022-04-11",
+    "schema_version": "1.0.0"
+  },
+
+  "jurisdiction_context": {
+    "jurisdiction_id": "IN_TN",
+    "country": "India",
+    "state": "Tamil Nadu",
+    "primary_statute": "Motor Vehicles Act, 1988 (amended 2019)",
+    "secondary_statute": "Tamil Nadu Motor Vehicles Rules, 1989",
+    "currency": "INR",
+    "compounding_authority": "Tamil Nadu Police / RTO",
+    "central_state_conflict_resolution": "CENTRAL_PREVAILS",
+    "effective_date": "2019-09-01"
+  },
+
+  "offence_registry": {
+    "IN_SEC_194D": {
+      "offence_id": "IN_SEC_194D",
+      "canonical_name": "Riding Without Helmet / Non-ISI Helmet",
+      "jurisdiction_id": "IN_TN",
+      "statute_ref": {
+        "act": "Motor Vehicles Act, 1988",
+        "section": "194D",
+        "amendment_year": 2019,
+        "gazette_ref": "S.O. 2224(E)"
+      },
+      "state_variation": {
+        "applicable": true,
+        "go_ref": "TN Home Dept G.O.(Ms).No.56/2022",
+        "state_notes": "TN enforces additional pillion-rider helmet mandate under Section 194D(2). Compounding fee for pillion without helmet: INR 1000."
+      },
+      "penalties": {
+        "base_fine_INR": 1000,
+        "repeat_offence_fine_INR": 2000,
+        "dl_suspension_days": 3,
+        "compoundable": true,
+        "compounding_fee_INR": 1000,
+        "community_service_option": false
+      },
+      "detection_triggers": {
+        "vision_class_ids": ["no_helmet", "non_isi_helmet", "helmet_improper_strap"],
+        "irad_category_code": "V-PROT-01",
+        "idd_class_mapping": "rider_no_helmet"
+      },
+      "evidentiary_requirements": {
+        "min_evidence_frames": 3,
+        "required_metadata": ["timestamp_epoch_ms", "gps_lat", "gps_lon", "vehicle_type", "frame_confidence_score"],
+        "frame_min_confidence": 0.82
+      },
+      "section_208_audit_applicable": false
+    },
+
+    "IN_SEC_183": {
+      "offence_id": "IN_SEC_183",
+      "canonical_name": "Exceeding Speed Limit",
+      "jurisdiction_id": "IN_TN",
+      "statute_ref": {
+        "act": "Motor Vehicles Act, 1988",
+        "section": "183",
+        "amendment_year": 2019,
+        "gazette_ref": "S.O. 2224(E)"
+      },
+      "state_variation": {
+        "applicable": true,
+        "go_ref": "TN Motor Vehicles Rules, Rule 17",
+        "state_notes": "TN mandates state highways default at 80 km/h for 2W; expressways at 100 km/h. Urban areas 50 km/h. School zones 25 km/h."
+      },
+      "penalties": {
+        "first_offence_fine_INR": 1000,
+        "second_offence_fine_INR": 2000,
+        "dl_suspension_applicable": true,
+        "dl_suspension_condition": "exceeds_posted_limit_by_percent >= 25",
+        "compoundable": true,
+        "compounding_fee_INR": 1000
+      },
+      "speed_thresholds_kmh": {
+        "urban_area": 50,
+        "state_highway_4W": 100,
+        "state_highway_2W": 80,
+        "expressway_4W": 120,
+        "expressway_2W": 100,
+        "school_zone": 25,
+        "hospital_zone": 40
+      },
+      "detection_triggers": {
+        "sensor_fusion_source": ["GPS_DOPPLER", "IMU_TCN_VELOCITY"],
+        "irad_category_code": "V-SPD-01",
+        "speed_sign_window_m": 500,
+        "requires_posted_sign_within_m": 500
+      },
+      "evidentiary_requirements": {
+        "min_gps_samples": 5,
+        "gps_accuracy_m": 5.0,
+        "required_metadata": ["timestamp_epoch_ms", "gps_lat", "gps_lon", "speed_kmh", "posted_limit_kmh", "road_type", "speed_sign_detected_within_500m"],
+        "imu_corroboration_required": true
+      },
+      "section_208_audit_applicable": true,
+      "sec_208_trigger_condition": "speed_camera_detected == true AND speed_sign_detected_within_500m == false"
+    },
+
+    "IN_SEC_177": {
+      "offence_id": "IN_SEC_177",
+      "canonical_name": "General Traffic Rule Violation",
+      "jurisdiction_id": "IN_TN",
+      "statute_ref": {
+        "act": "Motor Vehicles Act, 1988",
+        "section": "177",
+        "amendment_year": 2019,
+        "gazette_ref": "S.O. 2224(E)"
+      },
+      "penalties": {
+        "base_fine_INR": 500,
+        "repeat_offence_fine_INR": 1500,
+        "compoundable": true,
+        "compounding_fee_INR": 500
+      },
+      "section_208_audit_applicable": false
+    }
+  },
+
+  "jurisdiction_swap_targets": {
+    "UK_RTA_1988": {
+      "_comment": "SWAP FILE: Load uk_rta_legal_schema.jsonl to activate. All offence_ids will be re-mapped.",
+      "jurisdiction_id": "UK_ENG",
+      "country": "United Kingdom",
+      "state": "England and Wales",
+      "primary_statute": "Road Traffic Act, 1988",
+      "secondary_statute": "Road Traffic Offenders Act, 1988",
+      "currency": "GBP",
+      "compounding_authority": "DVLA / Police",
+      "offence_map": {
+        "IN_SEC_194D": "UK_RTA_SEC_16",
+        "IN_SEC_183": "UK_RTA_SEC_89"
+      }
+    }
+  },
+
+  "section_208_protocol": {
+    "protocol_id": "SEC_208_AUDIT",
+    "trigger_statute": "Motor Vehicles Act, 1988, Section 208",
+    "description": "If a speed camera is detected but no mandatory speed sign exists within the preceding 500m, generate a legally-binding Audit Request challenging the challan on infrastructural failure grounds.",
+    "audit_request_template": {
+      "to": "Regional Transport Officer / Jurisdictional Magistrate",
+      "subject_pattern": "Challenge to Motor Vehicle Challan — Absence of Mandatory Speed Limit Signage (MoRTH IRC:67 / Section 208 MVA 1988)",
+      "grounds": [
+        "No speed limit sign (IRC:67 compliant) detected within 500m upstream of enforcement camera location.",
+        "Absence of mandatory signage renders challan legally untenable per Section 208 MVA 1988.",
+        "Telemetry evidence (GPS trace, vision log, timestamp) attached as Annexure A.",
+        "Request production of NHAI/PWD sign installation record for cited road segment."
+      ],
+      "annexure_A_fields": ["timestamp_epoch_ms", "gps_lat", "gps_lon", "camera_gps_lat", "camera_gps_lon", "vision_detection_log_hash", "imu_speed_kmh"],
+      "evidentiary_hash_algo": "SHA3-256"
+    }
+  }
+}
