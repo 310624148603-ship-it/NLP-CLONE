@@ -17,6 +17,7 @@
 ---
 
 ## SPRINT 0 — Repository Initialization & Core Schema
+**TARGET: [2026-03-31 T 12:00:00]** | **STATE: 100% COMPLETE**
 
 | ID | Task | Owner | State | Blocker / Notes |
 |---|---|---|---|---|
@@ -25,12 +26,14 @@
 | T-003 | Author `CHANGELOG.md` (Keep-a-Changelog standard) | P5 | ✅ DONE | — |
 | T-004 | Define `schemas/universal_legal_schema.json` — Sec 194D + 183 + TN GOs | P1 | ✅ DONE | Validated against S.O. 2224(E) + TN G.O.(Ms).No.56/2022 |
 | T-005 | Author `agents/imu_near_miss_detector.py` (TCN sensor fusion) | P3 | ✅ DONE | ONNX export hook included |
-| T-006 | Define project directory structure + `__init__` stubs | P5 | ✅ DONE | — |
+| T-006 | Define project directory structure + `__init__ stubs` | P5 | ✅ DONE | — |
 | T-007 | Author `README.md` project overview | P5 | ✅ DONE | — |
+| T-021 | Author `etl/` pipeline (Stages 1-4) | P6 | ✅ DONE | OCR, Chunking, Embedding, Ingestion complete. |
 
 ---
 
 ## SPRINT 1 — Agent Core Implementation
+**TARGET: [2026-04-03 T 00:00:00 (MVP)]** | **STATE: 5% COMPLETE**
 
 | ID | Task | Owner | State | Blocker / Notes |
 |---|---|---|---|---|

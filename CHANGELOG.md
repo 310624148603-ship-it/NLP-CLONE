@@ -28,12 +28,17 @@
   - `NearMissEvent` dataclass: severity enum {CRITICAL, HIGH, MEDIUM}, timestamp_epoch_ms, gps_lat/lon placeholders, irad_category_code V-NMS-01
   - Calibration: `calibrate_gravity()` — 1 s static sample mean subtraction
 
+### Added — P6 (ETL Data Scavenger)
+- Full 5-stage ETL pipeline (`etl/`):
+  - `pdf_extractor.py`: Hybrid pdfplumber + Tesseract OCR extraction.
+  - `text_chunker.py`: Section-aware hierarchical legal chunking.
+  - `embedder.py`: Multi-mode offline embedding (ONNX INT8, ST FP32, Hash).
+  - `sqlite_vss_ingestor.py`: Vector persistence for Edge-RAG.
+  - `pipeline.py`: Unified orchestrator.
+
 ### Added — P5 (DevOps & CI/CD Commander)
-- `tasks.md`: Kanban board — Sprint 0 (7 tasks DONE), Sprint 1 (8 tasks TODO), Sprint 2 (5 tasks TODO), 3 ERR blocked nodes
-- `CHANGELOG.md`: this file, Keep-a-Changelog standard
-- `README.md`: project overview, architecture map, constraint declarations
-- Project directory scaffold: `agents/`, `core/`, `schemas/`, `tests/`, `docs/`
-- `.gitignore`: Python, ONNX artifacts, key material, Android build outputs
+- `tasks.md`: Added fixed deadlines (72h MVP, 6w Production).
+- `raw_data/`: Seeded directory for incoming PDF statutes.
 
 ### Changed
 - `README.md`: Replaced generic stub with SmartSalai Edge-Sentinel project documentation
