@@ -52,7 +52,7 @@ class TestSection208Resolver:
 
     def test_challenge_contains_only_expected_keys(self):
         result = self.resolver.challenge_speed_camera(self._camera(), signage_detected=False)
-        assert set(result.keys()) == {"status", "document", "legal_basis"}
+        assert set(result.keys()) == {"status", "document", "legal_basis", "statutory_sources"}
 
     def test_compliance_contains_only_status(self):
         result = self.resolver.challenge_speed_camera(self._camera(), signage_detected=True)

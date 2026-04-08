@@ -17,6 +17,7 @@ and combined statistics.
 """
 
 import random
+import os
 import time
 import sys
 import math
@@ -25,7 +26,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-sys.path.insert(0, "/home/runner/work/NLP/NLP")
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from agents.imu_near_miss_detector import (
     IMUSample,
     NearMissDetector,
