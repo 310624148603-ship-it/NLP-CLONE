@@ -28,6 +28,15 @@ import time
 from enum import IntEnum
 from typing import List, Optional
 
+from agents.driver_profile import VoicePersona
+
+# Bhashini gender mapping for each persona
+_PERSONA_BHASHINI_GENDER: dict[str, str] = {
+    VoicePersona.MALE:   "male",
+    VoicePersona.FEMALE: "female",
+    VoicePersona.CHILD:  "female",
+}
+
 logger = logging.getLogger("edge_sentinel.acoustic_ui")
 
 try:
@@ -106,14 +115,21 @@ class AcousticUI:
 
     _SLA_MS: float = 100.0  # Latency SLA in milliseconds
 
-    def __init__(self, language: str = "ta", speech_rate: int = 175) -> None:
+    def __init__(
+        self,
+        language: str = "ta",
+        speech_rate: int = 175,
+        voice_persona: str = VoicePersona.MALE,
+    ) -> None:
         """
         Args:
-            language:    ISO 639-1 code. 'ta' = Tamil, 'en' = English.
-            speech_rate: Words per minute for pyttsx3 fallback.  175 wpm ≈ urgent but clear.
+            language:      ISO 639-1 code. 'ta' = Tamil, 'en' = English, 'hi' = Hindi.
+            speech_rate:   Words per minute for pyttsx3 fallback.
+            voice_persona: 'male', 'female', or 'child' — affects voice selection.
         """
-        self.language = language
-        self._speech_rate = speech_rate
+        self.language      = language
+        self.voice_persona = voice_persona
+        self._speech_rate  = speech_rate if voice_persona != VoicePersona.CHILD else min(speech_rate, 200)
         # PriorityQueue entries: (int_priority, enqueue_perf_counter, text)
         self._queue: queue.PriorityQueue = queue.PriorityQueue()
         self._engine = None
@@ -154,27 +170,41 @@ class AcousticUI:
         try:
             self._engine = pyttsx3.init()
             self._engine.setProperty("rate", self._speech_rate)
+            voices = self._engine.getProperty("voices") or []
+            selected_voice = None
 
             if self.language == "ta":
-                voices = self._engine.getProperty("voices") or []
-                tamil_voice = next(
-                    (
-                        v for v in voices
-                        if "tamil" in v.name.lower()
-                        or "ta" in getattr(v, "languages", [])
-                    ),
-                    None,
+                selected_voice = next(
+                    (v for v in voices if "tamil" in v.name.lower()
+                     or "ta" in getattr(v, "languages", [])), None
                 )
-                if tamil_voice:
-                    self._engine.setProperty("voice", tamil_voice.id)
-                    logger.info("[P4] Tamil voice selected: %s", tamil_voice.name)
-                else:
-                    logger.warning(
-                        "[P4] No Tamil voice found — falling back to English pyttsx3. "
-                        "Install espeak-ng Tamil or set BHASHINI_USER_ID/BHASHINI_API_KEY "
-                        "in .env to enable real Tamil TTS."
-                    )
+                if not selected_voice:
+                    logger.warning("[P4] No Tamil voice — falling back to English pyttsx3.")
                     self.language = "en"
+
+            if self.language in ("en", "hi") or selected_voice is None:
+                if self.voice_persona == VoicePersona.FEMALE:
+                    selected_voice = next(
+                        (v for v in voices if any(
+                            k in v.name.lower() for k in ("zira", "samantha", "female", "karen", "victoria")
+                        )), None
+                    )
+                elif self.voice_persona == VoicePersona.CHILD:
+                    selected_voice = next(
+                        (v for v in voices if any(
+                            k in v.name.lower() for k in ("zira", "samantha", "female")
+                        )), None
+                    )
+                else:
+                    selected_voice = next(
+                        (v for v in voices if any(
+                            k in v.name.lower() for k in ("david", "alex", "male", "daniel", "george")
+                        )), None
+                    )
+
+            if selected_voice:
+                self._engine.setProperty("voice", selected_voice.id)
+                logger.info("[P4] Voice selected: %s (persona=%s)", selected_voice.name, self.voice_persona)
         except Exception as exc:  # noqa: BLE001
             logger.error("[P4] TTS engine init failed: %s", exc)
             self._engine = None
@@ -210,10 +240,13 @@ class AcousticUI:
 
             try:
                 spoken = False
-                # 1. Try Bhashini (real Tamil synthesis)
+                # 1. Try Bhashini (real Tamil/Indic synthesis) — pass persona gender
                 if self._bhashini is not None:
                     try:
-                        self._bhashini.synthesize_and_play(text, lang=self.language)
+                        gender = _PERSONA_BHASHINI_GENDER.get(self.voice_persona, "female")
+                        self._bhashini.synthesize_and_play(
+                            text, lang=self.language, gender=gender
+                        )
                         spoken = True
                     except BhashiniUnavailableError as exc:
                         logger.debug("[P4] Bhashini unavailable (%s), using pyttsx3", exc)

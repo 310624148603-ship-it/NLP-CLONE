@@ -303,6 +303,50 @@ if FASTAPI_AVAILABLE:
         lat: float = Field(..., ge=-90.0, le=90.0, description="Latitude in decimal degrees")
         lon: float = Field(..., ge=-180.0, le=180.0, description="Longitude in decimal degrees")
 
+    class ChatPayload(BaseModel):
+        driver_id: str = Field(..., min_length=1)
+        message:   str = Field(..., min_length=1, max_length=1000)
+
+    class DriverPrefsPayload(BaseModel):
+        driver_id:     str            = Field(..., min_length=1)
+        name:          Optional[str]  = None
+        language:      Optional[str]  = Field(None, pattern="^(ta|en|hi)$")
+        voice_persona: Optional[str]  = Field(None, pattern="^(male|female|child)$")
+
+    class RouteScorePayload(BaseModel):
+        routes: List[List[List[float]]] = Field(..., min_length=1)
+        labels: Optional[List[str]] = None
+
+
+# ---------------------------------------------------------------------------
+# Lazy-loaded driver-agent singletons
+# ---------------------------------------------------------------------------
+
+_profile_agent = None
+_route_advisor  = None
+
+
+def _get_profile_agent():
+    global _profile_agent  # noqa: PLW0603
+    if _profile_agent is None:
+        try:
+            from agents.driver_profile import DriverProfileAgent  # noqa: PLC0415
+            _profile_agent = DriverProfileAgent()
+        except Exception as exc:
+            logger.error("[API] DriverProfileAgent init failed: %s", exc)
+    return _profile_agent
+
+
+def _get_route_advisor():
+    global _route_advisor  # noqa: PLW0603
+    if _route_advisor is None:
+        try:
+            from agents.route_advisor import RouteAdvisor  # noqa: PLC0415
+            _route_advisor = RouteAdvisor()
+        except Exception as exc:
+            logger.error("[API] RouteAdvisor init failed: %s", exc)
+    return _route_advisor
+
 
 # ---------------------------------------------------------------------------
 # Signature verification helpers
@@ -504,6 +548,21 @@ def create_app() -> "FastAPI":
                 _alert_log.append(alert_event)
             _event_queue.put_nowait(alert_event)
 
+            # Persist to crowd-source hazard DB when GPS available
+            if payload.gps_lat is not None and payload.gps_lon is not None:
+                ra = _get_route_advisor()
+                if ra is not None:
+                    try:
+                        ra.record_hazard(
+                            payload.node_id,
+                            payload.hazard_class,
+                            payload.confidence if payload.confidence is not None else 1.0,
+                            payload.gps_lat,
+                            payload.gps_lon,
+                        )
+                    except Exception as exc:
+                        logger.debug("[INGEST] RouteAdvisor record failed: %s", exc)
+
         return {
             "status": "ACCEPTED",
             "event_type": payload.event_type,
@@ -559,6 +618,85 @@ def create_app() -> "FastAPI":
             )
         logger.info(f"[WEBHOOK] Payment verified: {payload.razorpay_payment_id}")
         return {"status": "PAYMENT_VERIFIED", "payment_id": payload.razorpay_payment_id}
+
+    # ------------------------------------------------------------------
+    # POST /api/v1/chat  — driver chatbot
+    # ------------------------------------------------------------------
+    @app.post("/api/v1/chat")
+    async def chat(payload: ChatPayload):
+        pa = _get_profile_agent()
+        if pa is None:
+            raise HTTPException(status_code=503, detail="Driver profile service unavailable.")
+        try:
+            from agents.driver_chatbot import DriverChatbot  # noqa: PLC0415
+            ra  = _get_route_advisor()
+            bot = DriverChatbot(payload.driver_id, pa, route_advisor=ra)
+            return bot.chat(payload.message)
+        except Exception as exc:
+            logger.error("[CHAT] %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    # ------------------------------------------------------------------
+    # GET /api/v1/driver/{driver_id}/profile
+    # ------------------------------------------------------------------
+    @app.get("/api/v1/driver/{driver_id}/profile")
+    async def get_driver_profile(driver_id: str):
+        pa = _get_profile_agent()
+        if pa is None:
+            raise HTTPException(status_code=503, detail="Profile service unavailable.")
+        summary = pa.get_summary(driver_id)
+        if not summary:
+            raise HTTPException(status_code=404, detail=f"Driver '{driver_id}' not found.")
+        return summary
+
+    # ------------------------------------------------------------------
+    # POST /api/v1/driver/preferences
+    # ------------------------------------------------------------------
+    @app.post("/api/v1/driver/preferences")
+    async def update_driver_prefs(payload: DriverPrefsPayload):
+        pa = _get_profile_agent()
+        if pa is None:
+            raise HTTPException(status_code=503, detail="Profile service unavailable.")
+        pa.get_or_create(
+            payload.driver_id,
+            name=payload.name or "",
+            language=payload.language or "ta",
+            voice_persona=payload.voice_persona or "male",
+        )
+        p = pa.update_preferences(
+            payload.driver_id,
+            name=payload.name,
+            language=payload.language,
+            voice_persona=payload.voice_persona,
+        )
+        return {
+            "status": "UPDATED",
+            "driver_id":     p.driver_id,
+            "name":          p.name,
+            "language":      p.language,
+            "voice_persona": p.voice_persona,
+        }
+
+    # ------------------------------------------------------------------
+    # POST /api/v1/route/score
+    # ------------------------------------------------------------------
+    @app.post("/api/v1/route/score")
+    async def route_score(payload: RouteScorePayload):
+        ra = _get_route_advisor()
+        if ra is None:
+            raise HTTPException(status_code=503, detail="Route advisor unavailable.")
+        alternatives = [[(wp[0], wp[1]) for wp in route] for route in payload.routes]
+        return ra.recommend(alternatives, labels=payload.labels)
+
+    # ------------------------------------------------------------------
+    # GET /api/v1/hazards/live
+    # ------------------------------------------------------------------
+    @app.get("/api/v1/hazards/live")
+    async def hazards_live(max_age_h: float = 2.0, limit: int = 100):
+        ra = _get_route_advisor()
+        if ra is None:
+            return {"hazards": [], "note": "Route advisor unavailable."}
+        return {"hazards": ra.get_live_hazard_feed(max_age_h=max_age_h, limit=limit)}
 
     return app
 

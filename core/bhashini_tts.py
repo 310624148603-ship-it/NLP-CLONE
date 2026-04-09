@@ -204,7 +204,7 @@ class BhashiniTTSClient:
     # TTS inference
     # ------------------------------------------------------------------
 
-    def synthesize(self, text: str, lang: str = "ta") -> bytes:
+    def synthesize(self, text: str, lang: str = "ta", gender: str = "female") -> bytes:
         """
         Synthesise *text* to WAV audio bytes using the Bhashini ULCA TTS API.
 
@@ -231,7 +231,7 @@ class BhashiniTTSClient:
                     "config": {
                         "language": {"sourceLanguage": lang},
                         "serviceId": service_id,
-                        "gender": "female",
+                        "gender": gender,
                         "samplingRate": int(_SAMPLE_RATE),
                     },
                 }
@@ -268,20 +268,14 @@ class BhashiniTTSClient:
                 f"Unexpected inference response structure: {exc}\nResponse: {result}"
             ) from exc
 
-    def synthesize_and_play(self, text: str, lang: str = "ta") -> bool:
+    def synthesize_and_play(self, text: str, lang: str = "ta", gender: str = "female") -> bool:
         """
         Synthesise *text* and play it via the system audio output.
 
-        Uses the `wave` + `pyaudio` stdlib path when available; falls back
-        to writing a temp WAV file and opening it with the OS player.
-
-        Returns:
-            True on success; False if playback is unavailable.
-
-        Raises:
-            BhashiniUnavailableError: if synthesis fails (not if playback fails).
+        Args:
+            gender: 'male' or 'female' — Bhashini voice selection.
         """
-        audio_bytes = self.synthesize(text, lang=lang)
+        audio_bytes = self.synthesize(text, lang=lang, gender=gender)
 
         try:
             import pyaudio  # noqa: PLC0415
