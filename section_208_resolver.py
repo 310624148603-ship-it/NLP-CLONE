@@ -35,7 +35,7 @@ def _ist_timestamp() -> str:
 def _sha3_evidence_hash(camera_data: dict) -> str:
     """
     SHA3-256 hex digest of the camera evidence payload.
-    Provides an tamper-evident commitment for Annexure A.
+    Provides a tamper-evident commitment for Annexure A.
     """
     payload = json.dumps(camera_data, sort_keys=True).encode("utf-8")
     return hashlib.sha3_256(payload).hexdigest()
