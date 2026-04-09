@@ -25,6 +25,7 @@ Environment variables (set in .env or export):
 from __future__ import annotations
 
 import argparse
+import glob
 import os
 import shutil
 import sys
