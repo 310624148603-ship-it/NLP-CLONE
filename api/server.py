@@ -774,6 +774,87 @@ def create_app() -> "FastAPI":
             return {"hazards": [], "note": "Route advisor unavailable."}
         return {"hazards": ra.get_live_hazard_feed(max_age_h=max_age_h, limit=limit)}
 
+    # ------------------------------------------------------------------
+    # GET /api/v1/cameras — list configured camera directions
+    # ------------------------------------------------------------------
+    @app.get("/api/v1/cameras")
+    async def list_cameras():
+        """
+        Returns all configured camera directions, their device indices,
+        and the MJPEG stream URL for each. Use with 360° rigs or webcams.
+        """
+        return {
+            "cameras": [
+                {"direction": d, "index": i, "stream_url": f"/video_feed/{d}"}
+                for d, i in zip(_CAMERA_DIRECTIONS, _CAMERA_INDICES)
+            ],
+            "count": len(_CAMERA_DIRECTIONS),
+            "live_enabled": _LIVE_CAMERA_ENABLED,
+        }
+
+    # ------------------------------------------------------------------
+    # GET /api/v1/incident/report — full incident report
+    # ------------------------------------------------------------------
+    @app.get("/api/v1/incident/report")
+    async def incident_report(driver_id: str = ""):
+        """
+        Generate a full incident report combining:
+          - Driver profile, safety score, and weaknesses
+          - Recent crowd-sourced hazard events (last 2 h)
+          - Last 20 server-side alerts
+          - IRAD compliance flag
+        """
+        import datetime as _dt  # noqa: PLC0415
+        report: Dict[str, Any] = {
+            "report_id": f"INC-{int(time.time())}",
+            "generated_at": _dt.datetime.utcnow().isoformat() + "Z",
+            "driver": {},
+            "safety_score": None,
+            "weaknesses": [],
+            "advice": [],
+            "hazard_events": [],
+            "recent_alerts": [],
+            "camera_directions": _CAMERA_DIRECTIONS,
+            "irad_compliant": True,
+        }
+        if driver_id:
+            pa = _get_profile_agent()
+            if pa is not None:
+                summary = pa.get_summary(driver_id)
+                if summary:
+                    report["driver"] = summary
+                    report["safety_score"] = summary.get("safety_score")
+                    report["weaknesses"] = summary.get("weaknesses", [])
+                    report["advice"] = pa.get_weakness_advice(driver_id)
+        ra = _get_route_advisor()
+        if ra is not None:
+            try:
+                report["hazard_events"] = ra.get_live_hazard_feed(max_age_h=2.0, limit=50)
+            except Exception:
+                pass
+        with _alert_lock:
+            report["recent_alerts"] = list(_alert_log)[-20:]
+        return report
+
+    # ------------------------------------------------------------------
+    # POST /api/v1/incident/share — shareable JSON blob
+    # ------------------------------------------------------------------
+    @app.post("/api/v1/incident/share")
+    async def incident_share(driver_id: str = ""):
+        """
+        Returns the incident report as a downloadable JSON attachment.
+        Suitable for sharing via BLE mesh, email, or saving locally.
+        """
+        import datetime as _dt  # noqa: PLC0415
+        report = await incident_report(driver_id=driver_id)
+        filename = f"incident_{report['report_id']}.json"
+        content = json.dumps(report, indent=2, ensure_ascii=False).encode("utf-8")
+        return StreamingResponse(
+            iter([content]),
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
     return app
 
 
