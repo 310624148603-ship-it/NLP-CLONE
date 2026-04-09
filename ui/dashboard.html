@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartSalai Edge-Sentinel — Live Dashboard</title>
+  <style>
+    /* ------------------------------------------------------------------ */
+    /*  Reset & base                                                        */
+    /* ------------------------------------------------------------------ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0b0c10;
+      --surface:  #14161d;
+      --border:   #1f2230;
+      --accent:   #00e5ff;
+      --green:    #00e676;
+      --amber:    #ffab00;
+      --red:      #ff1744;
+      --text:     #cdd3e0;
+      --muted:    #5c6475;
+      --font:     'Consolas', 'Menlo', monospace;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 13px;
+      line-height: 1.5;
+      overflow: hidden;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  Header bar                                                          */
+    /* ------------------------------------------------------------------ */
+    #header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      height: 44px;
+    }
+    #header .logo {
+      color: var(--accent);
+      font-size: 15px;
+      font-weight: bold;
+      letter-spacing: 1px;
+    }
+    #header .logo span { color: var(--text); font-weight: normal; font-size: 12px; margin-left: 8px; }
+    #ws-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+    }
+    #ws-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--red);
+      transition: background 0.3s;
+    }
+    #ws-dot.connected   { background: var(--green); }
+    #ws-dot.connecting  { background: var(--amber); }
+
+    /* ------------------------------------------------------------------ */
+    /*  Layout grid                                                         */
+    /* ------------------------------------------------------------------ */
+    #grid {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      grid-template-rows: 1fr 180px;
+      gap: 8px;
+      padding: 8px;
+      height: calc(100vh - 44px);
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-title {
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--accent);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .panel-title .badge {
+      background: var(--border);
+      border-radius: 10px;
+      padding: 1px 7px;
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .panel-body {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  Camera panel (#cam-panel spans rows 1–2 in col 1)                  */
+    /* ------------------------------------------------------------------ */
+    #cam-panel {
+      grid-row: 1 / 3;
+    }
+    #cam-wrap {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background: #000;
+    }
+    #cam-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+    #cam-canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+    }
+    #cam-no-signal {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    #cam-no-signal .icon { font-size: 48px; margin-bottom: 8px; }
+    #fps-badge {
+      position: absolute;
+      top: 8px; right: 8px;
+      background: rgba(0,0,0,0.6);
+      color: var(--green);
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 3px;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  GPS panel                                                           */
+    /* ------------------------------------------------------------------ */
+    #gps-panel {
+      grid-column: 2;
+      grid-row: 1;
+    }
+    #gps-body {
+      padding: 12px 16px;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .gps-row { display: flex; justify-content: space-between; align-items: center; }
+    .gps-label { color: var(--muted); font-size: 11px; }
+    .gps-value {
+      font-size: 15px;
+      color: var(--accent);
+      font-weight: bold;
+      letter-spacing: 0.5px;
+    }
+    #gps-map-link {
+      margin-top: 6px;
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 11px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 10px;
+      text-align: center;
+      transition: background 0.2s;
+      cursor: pointer;
+    }
+    #gps-map-link:hover { background: var(--border); }
+
+    /* detection list inside GPS panel */
+    #det-list {
+      flex: 1;
+      overflow-y: auto;
+      margin-top: 4px;
+    }
+    #det-list::-webkit-scrollbar { width: 4px; }
+    #det-list::-webkit-scrollbar-thumb { background: var(--border); }
+    .det-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--border);
+      animation: fadein 0.3s ease;
+    }
+    @keyframes fadein { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; } }
+    .det-label { color: var(--text); font-size: 12px; }
+    .det-conf {
+      font-size: 11px;
+      padding: 1px 6px;
+      border-radius: 3px;
+      background: var(--border);
+    }
+    .det-conf.high   { color: var(--red);   background: rgba(255,23,68,0.15); }
+    .det-conf.medium { color: var(--amber); background: rgba(255,171,0,0.15); }
+    .det-conf.low    { color: var(--green); background: rgba(0,230,118,0.12); }
+
+    /* ------------------------------------------------------------------ */
+    /*  Alerts panel                                                        */
+    /* ------------------------------------------------------------------ */
+    #alerts-panel {
+      grid-column: 2;
+      grid-row: 2;
+    }
+    #alert-log {
+      height: 100%;
+      overflow-y: auto;
+      padding: 6px 10px;
+    }
+    #alert-log::-webkit-scrollbar { width: 4px; }
+    #alert-log::-webkit-scrollbar-thumb { background: var(--border); }
+    .alert-item {
+      padding: 5px 6px;
+      margin-bottom: 4px;
+      border-radius: 4px;
+      font-size: 11px;
+      border-left: 3px solid var(--muted);
+      animation: fadein 0.3s ease;
+    }
+    .alert-item.CRITICAL { border-color: var(--red);   background: rgba(255,23,68,0.08); color: #ff6b6b; }
+    .alert-item.HIGH     { border-color: var(--amber); background: rgba(255,171,0,0.08); color: #ffd54f; }
+    .alert-item.MEDIUM   { border-color: var(--accent); background: rgba(0,229,255,0.06); }
+    .alert-item.INFO     { border-color: var(--green); background: rgba(0,230,118,0.06); }
+    .alert-time { color: var(--muted); font-size: 10px; margin-bottom: 2px; }
+
+    /* ------------------------------------------------------------------ */
+    /*  Stats footer (bottom of camera panel)                              */
+    /* ------------------------------------------------------------------ */
+    #stats-bar {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      display: flex;
+      gap: 16px;
+      padding: 5px 12px;
+      background: rgba(0,0,0,0.6);
+      font-size: 11px;
+      color: var(--muted);
+    }
+    #stats-bar span { color: var(--text); }
+  </style>
+</head>
+<body>
+
+<!-- ========== Header ========== -->
+<div id="header">
+  <div class="logo">
+    SmartSalai Edge-Sentinel
+    <span>v0.1 · Live Dashboard</span>
+  </div>
+  <div id="ws-status">
+    <div id="ws-dot" class="connecting"></div>
+    <span id="ws-label">Connecting…</span>
+    <span id="client-count" style="margin-left:10px; color: var(--muted);">— clients</span>
+  </div>
+</div>
+
+<!-- ========== Grid ========== -->
+<div id="grid">
+
+  <!-- Camera + overlay -->
+  <div class="panel" id="cam-panel">
+    <div class="panel-title">
+      Live Camera Feed
+      <span id="cam-status" class="badge">OFF</span>
+    </div>
+    <div class="panel-body">
+      <div id="cam-wrap">
+        <img id="cam-img" src="" alt="" style="display:none;" />
+        <canvas id="cam-canvas"></canvas>
+        <div id="cam-no-signal">
+          <div class="icon">📷</div>
+          Camera offline<br/>
+          <small>Set LIVE_CAMERA_ENABLED=1 and open /video_feed</small>
+        </div>
+        <div id="fps-badge">-- FPS</div>
+        <div id="stats-bar">
+          Detections: <span id="stat-det">0</span>&nbsp;
+          &nbsp;Alerts: <span id="stat-alerts">0</span>&nbsp;
+          &nbsp;Frames: <span id="stat-frames">0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GPS + detections -->
+  <div class="panel" id="gps-panel">
+    <div class="panel-title">
+      GPS · Detections
+      <span id="det-count" class="badge">0 objects</span>
+    </div>
+    <div class="panel-body">
+      <div id="gps-body">
+        <div class="gps-row">
+          <span class="gps-label">Latitude</span>
+          <span class="gps-value" id="gps-lat">—</span>
+        </div>
+        <div class="gps-row">
+          <span class="gps-label">Longitude</span>
+          <span class="gps-value" id="gps-lon">—</span>
+        </div>
+        <a id="gps-map-link" href="#" target="_blank" rel="noopener">
+          🗺 Open in Google Maps
+        </a>
+        <div id="det-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Alert log -->
+  <div class="panel" id="alerts-panel">
+    <div class="panel-title">
+      Notifications &amp; Alerts
+      <span id="alert-count" class="badge">0</span>
+    </div>
+    <div class="panel-body">
+      <div id="alert-log">
+        <div class="alert-item INFO">
+          <div class="alert-time">System</div>
+          Dashboard loaded — waiting for WebSocket connection…
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- #grid -->
+
+<script>
+/* ------------------------------------------------------------------ */
+/*  Configuration                                                       */
+/* ------------------------------------------------------------------ */
+const WS_URL      = `ws://${location.host}/ws/live`;
+const MJPEG_URL   = `/video_feed`;
+const RECONNECT_MS = 3000;
+
+/* ------------------------------------------------------------------ */
+/*  State                                                               */
+/* ------------------------------------------------------------------ */
+let totalDetections = 0;
+let totalAlerts     = 0;
+let totalFrames     = 0;
+let lastFrameTs     = 0;
+let fpsAccum        = 0;
+let fpsCount        = 0;
+let currentLat      = null;
+let currentLon      = null;
+let ws              = null;
+let lastDetections  = [];
+
+/* DOM refs */
+const wsDot      = document.getElementById('ws-dot');
+const wsLabel    = document.getElementById('ws-label');
+const clientCnt  = document.getElementById('client-count');
+const gpsLat     = document.getElementById('gps-lat');
+const gpsLon     = document.getElementById('gps-lon');
+const gpsLink    = document.getElementById('gps-map-link');
+const detList    = document.getElementById('det-list');
+const detCount   = document.getElementById('det-count');
+const alertLog   = document.getElementById('alert-log');
+const alertCount = document.getElementById('alert-count');
+const camImg     = document.getElementById('cam-img');
+const camCanvas  = document.getElementById('cam-canvas');
+const camNoSig   = document.getElementById('cam-no-signal');
+const camStatus  = document.getElementById('cam-status');
+const fpsBadge   = document.getElementById('fps-badge');
+const statDet    = document.getElementById('stat-det');
+const statAlerts = document.getElementById('stat-alerts');
+const statFrames = document.getElementById('stat-frames');
+const ctx        = camCanvas.getContext('2d');
+
+/* ------------------------------------------------------------------ */
+/*  WebSocket                                                           */
+/* ------------------------------------------------------------------ */
+function connectWS() {
+  wsDot.className = 'connecting';
+  wsLabel.textContent = 'Connecting…';
+
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    wsDot.className = 'connected';
+    wsLabel.textContent = 'Connected';
+    addAlert('INFO', 'WebSocket connected to server.');
+  };
+
+  ws.onclose = () => {
+    wsDot.className = '';
+    wsLabel.textContent = 'Disconnected — retrying…';
+    setTimeout(connectWS, RECONNECT_MS);
+  };
+
+  ws.onerror = () => {
+    wsDot.className = '';
+    wsLabel.textContent = 'Connection error';
+  };
+
+  ws.onmessage = (evt) => {
+    let msg;
+    try { msg = JSON.parse(evt.data); } catch { return; }
+    routeMessage(msg);
+  };
+}
+
+function routeMessage(msg) {
+  switch (msg.type) {
+    case 'detection':  handleDetection(msg);  break;
+    case 'alert':      handleAlert(msg);       break;
+    case 'gps':        handleGPS(msg);         break;
+    case 'imu':        handleIMU(msg);         break;
+    case 'heartbeat':  handleHeartbeat(msg);   break;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Detection handler                                                   */
+/* ------------------------------------------------------------------ */
+function handleDetection(msg) {
+  const dets = msg.data || [];
+  lastDetections = dets;
+  totalDetections += dets.length;
+  statDet.textContent = totalDetections;
+  detCount.textContent = `${dets.length} object${dets.length !== 1 ? 's' : ''}`;
+
+  detList.innerHTML = '';
+  dets.forEach(d => {
+    const conf = Math.round(d.conf * 100);
+    const cls  = conf >= 70 ? 'high' : conf >= 45 ? 'medium' : 'low';
+    const el   = document.createElement('div');
+    el.className = 'det-item';
+    el.innerHTML = `
+      <span class="det-label">${d.label.replace(/_/g,' ')}</span>
+      <span class="det-conf ${cls}">${conf}%</span>`;
+    detList.appendChild(el);
+  });
+
+  drawOverlays(dets);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Bounding-box overlay on canvas                                     */
+/* ------------------------------------------------------------------ */
+const LABEL_COLORS = {
+  pothole:         '#ff1744',
+  road_work:       '#ff9100',
+  speed_camera:    '#ff6d00',
+  traffic_light_red:    '#ff1744',
+  traffic_light_green:  '#00e676',
+  traffic_light_yellow: '#ffab00',
+  pedestrian:      '#00e5ff',
+  speed_limit_sign:'#69f0ae',
+  stop_sign:       '#ff1744',
+};
+const DEFAULT_COLOR = '#00e5ff';
+
+function drawOverlays(dets) {
+  if (!camImg.naturalWidth) return;
+  const scaleX = camCanvas.width  / camImg.naturalWidth;
+  const scaleY = camCanvas.height / camImg.naturalHeight;
+  ctx.clearRect(0, 0, camCanvas.width, camCanvas.height);
+
+  dets.forEach(d => {
+    if (!d.bbox || d.bbox.length < 4) return;
+    const [x1, y1, x2, y2] = d.bbox;
+    const color = LABEL_COLORS[d.label] || DEFAULT_COLOR;
+    const conf  = Math.round(d.conf * 100);
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 2;
+    ctx.strokeRect(x1 * scaleX, y1 * scaleY, (x2 - x1) * scaleX, (y2 - y1) * scaleY);
+    ctx.fillStyle = color;
+    ctx.font       = '11px Consolas, monospace';
+    ctx.fillText(
+      `${d.label.replace(/_/g,' ')} ${conf}%`,
+      x1 * scaleX + 2, y1 * scaleY - 4 < 12 ? y1 * scaleY + 14 : y1 * scaleY - 4
+    );
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/*  Alert / notification handler                                        */
+/* ------------------------------------------------------------------ */
+function handleAlert(msg) {
+  totalAlerts++;
+  statAlerts.textContent = totalAlerts;
+  alertCount.textContent = totalAlerts;
+  addAlert(msg.severity || 'INFO', msg.message || JSON.stringify(msg));
+}
+
+function addAlert(severity, message) {
+  const now   = new Date().toLocaleTimeString('en-IN', { hour12: false });
+  const el    = document.createElement('div');
+  el.className = `alert-item ${severity}`;
+  el.innerHTML = `<div class="alert-time">${now} · ${severity}</div>${escHtml(message)}`;
+  alertLog.insertBefore(el, alertLog.firstChild);
+  // Keep at most 100 items
+  while (alertLog.children.length > 100) alertLog.removeChild(alertLog.lastChild);
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ------------------------------------------------------------------ */
+/*  GPS handler                                                         */
+/* ------------------------------------------------------------------ */
+function handleGPS(msg) {
+  if (msg.lat == null || msg.lon == null) return;
+  currentLat = msg.lat;
+  currentLon = msg.lon;
+  gpsLat.textContent = msg.lat.toFixed(6) + '°';
+  gpsLon.textContent = msg.lon.toFixed(6) + '°';
+  gpsLink.href = `https://maps.google.com/maps?q=${msg.lat},${msg.lon}`;
+}
+
+/* ------------------------------------------------------------------ */
+/*  IMU handler                                                         */
+/* ------------------------------------------------------------------ */
+function handleIMU(msg) {
+  if (msg.severity && msg.severity !== 'null') {
+    addAlert(msg.severity === 'CRITICAL' ? 'CRITICAL' : 'HIGH',
+      `IMU near-miss: ${msg.severity} — ax=${(msg.ax||0).toFixed(1)} ay=${(msg.ay||0).toFixed(1)}`
+    );
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Heartbeat                                                           */
+/* ------------------------------------------------------------------ */
+function handleHeartbeat(msg) {
+  if (msg.connected_clients != null)
+    clientCnt.textContent = `${msg.connected_clients} client${msg.connected_clients !== 1 ? 's' : ''}`;
+  if (msg.lat != null && currentLat == null) handleGPS(msg);
+}
+
+/* ------------------------------------------------------------------ */
+/*  MJPEG camera stream                                                 */
+/* ------------------------------------------------------------------ */
+function startCamera() {
+  camImg.src = MJPEG_URL;
+  camImg.onload = () => {
+    camNoSig.style.display  = 'none';
+    camImg.style.display    = 'block';
+    camStatus.textContent   = 'LIVE';
+    camStatus.style.color   = 'var(--green)';
+    // Size canvas to match natural video resolution
+    camCanvas.width  = camImg.naturalWidth  || camImg.offsetWidth;
+    camCanvas.height = camImg.naturalHeight || camImg.offsetHeight;
+    tickFPS();
+    totalFrames++;
+    statFrames.textContent = totalFrames;
+    if (lastDetections.length) drawOverlays(lastDetections);
+  };
+  camImg.onerror = () => {
+    camNoSig.style.display = 'flex';
+    camImg.style.display   = 'none';
+    camStatus.textContent  = 'OFF';
+    camStatus.style.color  = '';
+  };
+}
+
+/* FPS ticker */
+let _lastFpsTick = performance.now();
+function tickFPS() {
+  const now   = performance.now();
+  const delta = now - _lastFpsTick;
+  _lastFpsTick = now;
+  fpsAccum += 1000 / delta;
+  fpsCount++;
+  if (fpsCount >= 10) {
+    fpsBadge.textContent = `${Math.round(fpsAccum / fpsCount)} FPS`;
+    fpsAccum = fpsCount = 0;
+  }
+}
+
+/* Re-sync canvas size on window resize */
+window.addEventListener('resize', () => {
+  if (camImg.naturalWidth) {
+    camCanvas.width  = camImg.offsetWidth;
+    camCanvas.height = camImg.offsetHeight;
+    if (lastDetections.length) drawOverlays(lastDetections);
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/*  Init                                                                */
+/* ------------------------------------------------------------------ */
+connectWS();
+startCamera();
+</script>
+</body>
+</html>
