@@ -2,14 +2,21 @@
 agents/acoustic_ui.py
 SmartSalai Edge-Sentinel — P4: Acoustic Voice UI
 
-Bhashini-compatible TTS interface for driver hazard alerts.
+Bhashini-powered TTS interface for driver hazard alerts.
 
 Language: Tamil (primary), English (fallback).
 Target latency: <100ms from event to engine.say() call.
 
-ERR-002: Bhashini offline TTS model package not yet available.
-         Falls back to pyttsx3 with Tamil voice selection if installed.
-         Install a Tamil system voice (e.g. espeak-ng Tamil) to activate.
+TTS backend priority:
+  1. Bhashini ULCA REST API  — real Tamil synthesis (needs BHASHINI_USER_ID +
+                               BHASHINI_API_KEY in environment / .env)
+  2. pyttsx3 Tamil voice     — local synthesis if a Tamil system voice is installed
+  3. pyttsx3 English voice   — silent degradation to English
+  4. Silent / log-only       — when pyttsx3 is unavailable
+
+ERR-002 status: RESOLVED — set BHASHINI_USER_ID and BHASHINI_API_KEY in .env
+  to activate real Tamil synthesis via the Bhashini ULCA API.
+  See .env.example for the required variables.
 """
 
 from __future__ import annotations
@@ -29,6 +36,14 @@ try:
 except ImportError:
     _PYTTSX3_AVAILABLE = False
     logger.warning("[P4] pyttsx3 not installed — TTS will be silent.")
+
+# Lazy-import Bhashini client (no hard dep)
+try:
+    from core.bhashini_tts import BhashiniTTSClient, BhashiniUnavailableError
+    _BHASHINI_IMPORTABLE = True
+except ImportError:
+    _BHASHINI_IMPORTABLE = False
+    BhashiniUnavailableError = Exception  # type: ignore[misc,assignment]
 
 
 # ---------------------------------------------------------------------------
@@ -71,11 +86,18 @@ class AcousticUI:
     """
     Edge-native priority-queue voice alert system for two-wheeler safety.
 
+    TTS backend selection (automatic, in priority order):
+      1. Bhashini ULCA API — cloud REST, real Tamil synthesis (ERR-002 resolved when
+         BHASHINI_USER_ID + BHASHINI_API_KEY are present in the environment)
+      2. pyttsx3 Tamil voice — offline, if a Tamil system voice is installed
+      3. pyttsx3 English voice — offline fallback
+      4. Silent log-only — when no engine is available
+
     Priority queue guarantees CRITICAL alerts preempt in-progress lower-priority
     speech on the next sentence boundary (pyttsx3 runAndWait is blocking per item).
 
     Latency tracking:
-      Time from enqueue() to engine.say() call is measured and logged.
+      Time from enqueue() to engine.say() / Bhashini synthesis call is measured.
       SLA target: <100ms.  Violations are logged at WARNING level.
 
     Thread safety:
@@ -88,23 +110,42 @@ class AcousticUI:
         """
         Args:
             language:    ISO 639-1 code. 'ta' = Tamil, 'en' = English.
-            speech_rate: Words per minute.  175 wpm ≈ urgent but clear speech.
+            speech_rate: Words per minute for pyttsx3 fallback.  175 wpm ≈ urgent but clear.
         """
         self.language = language
         self._speech_rate = speech_rate
         # PriorityQueue entries: (int_priority, enqueue_perf_counter, text)
         self._queue: queue.PriorityQueue = queue.PriorityQueue()
         self._engine = None
+        self._bhashini: Optional["BhashiniTTSClient"] = None
         self._worker_thread: Optional[threading.Thread] = None
         self._running = False
         self._latencies_ms: List[float] = []  # Rolling window of last 100 latencies
 
+        self._init_bhashini()
         self._init_engine()
         self._start_worker()
 
     # ------------------------------------------------------------------
     # Engine initialisation
     # ------------------------------------------------------------------
+
+    def _init_bhashini(self) -> None:
+        """Try to initialise the Bhashini TTS client (ERR-002 resolution)."""
+        if not _BHASHINI_IMPORTABLE:
+            return
+        client = BhashiniTTSClient()
+        if client.is_configured():
+            self._bhashini = client
+            logger.info(
+                "[P4] Bhashini TTS client initialised — real Tamil synthesis active. "
+                "(ERR-002 RESOLVED)"
+            )
+        else:
+            logger.warning(
+                "[P4] Bhashini credentials absent — Tamil synthesis degraded to pyttsx3. "
+                "Set BHASHINI_USER_ID + BHASHINI_API_KEY in .env to resolve ERR-002."
+            )
 
     def _init_engine(self) -> None:
         if not _PYTTSX3_AVAILABLE:
@@ -129,8 +170,9 @@ class AcousticUI:
                     logger.info("[P4] Tamil voice selected: %s", tamil_voice.name)
                 else:
                     logger.warning(
-                        "[P4] No Tamil voice found — falling back to English. "
-                        "Install espeak-ng Tamil or Bhashini TTS to resolve ERR-002."
+                        "[P4] No Tamil voice found — falling back to English pyttsx3. "
+                        "Install espeak-ng Tamil or set BHASHINI_USER_ID/BHASHINI_API_KEY "
+                        "in .env to enable real Tamil TTS."
                     )
                     self.language = "en"
         except Exception as exc:  # noqa: BLE001
@@ -167,10 +209,22 @@ class AcousticUI:
                 )
 
             try:
-                if self._engine is not None:
+                spoken = False
+                # 1. Try Bhashini (real Tamil synthesis)
+                if self._bhashini is not None:
+                    try:
+                        self._bhashini.synthesize_and_play(text, lang=self.language)
+                        spoken = True
+                    except BhashiniUnavailableError as exc:
+                        logger.debug("[P4] Bhashini unavailable (%s), using pyttsx3", exc)
+
+                # 2. Fall back to pyttsx3
+                if not spoken and self._engine is not None:
                     self._engine.say(text)
                     self._engine.runAndWait()
-                else:
+                    spoken = True
+
+                if not spoken:
                     logger.info("[P4] (SILENT) %s", text)
             except Exception as exc:  # noqa: BLE001
                 logger.error("[P4] TTS engine error: %s", exc)

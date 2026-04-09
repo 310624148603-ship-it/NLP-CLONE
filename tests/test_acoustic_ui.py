@@ -27,11 +27,12 @@ from agents.acoustic_ui import AcousticUI, AlertPriority, _TAMIL_TEMPLATES, _ENG
 
 @pytest.fixture
 def ui():
-    """AcousticUI with mocked pyttsx3 (no audio output)."""
+    """AcousticUI with mocked pyttsx3 and no Bhashini credentials (no audio output)."""
     mock_engine = MagicMock()
     mock_engine.getProperty.return_value = []   # No voices → English fallback
     with patch("pyttsx3.init", return_value=mock_engine):
-        mgr = AcousticUI(language="en")
+        with patch.dict("os.environ", {"BHASHINI_USER_ID": "", "BHASHINI_API_KEY": ""}):
+            mgr = AcousticUI(language="en")
     yield mgr
     mgr.stop()
 
@@ -141,7 +142,8 @@ class TestLanguage:
         mock_engine = MagicMock()
         mock_engine.getProperty.return_value = []
         with patch("pyttsx3.init", return_value=mock_engine):
-            ui = AcousticUI(language="en")
+            with patch.dict("os.environ", {"BHASHINI_USER_ID": "", "BHASHINI_API_KEY": ""}):
+                ui = AcousticUI(language="en")
         assert ui.language == "en"
         ui.stop()
 
@@ -150,7 +152,8 @@ class TestLanguage:
         mock_engine = MagicMock()
         mock_engine.getProperty.return_value = []
         with patch("pyttsx3.init", return_value=mock_engine):
-            ui = AcousticUI(language="ta")
+            with patch.dict("os.environ", {"BHASHINI_USER_ID": "", "BHASHINI_API_KEY": ""}):
+                ui = AcousticUI(language="ta")
         assert ui.language == "en"
         ui.stop()
 
@@ -177,6 +180,7 @@ class TestLatency:
         mock_engine = MagicMock()
         mock_engine.getProperty.return_value = []
         with patch("pyttsx3.init", return_value=mock_engine):
-            ui = AcousticUI(language="en")
+            with patch.dict("os.environ", {"BHASHINI_USER_ID": "", "BHASHINI_API_KEY": ""}):
+                ui = AcousticUI(language="en")
         assert ui.get_mean_latency_ms() is None
         ui.stop()
