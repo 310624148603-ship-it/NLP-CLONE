@@ -25,8 +25,8 @@ _WAKE_PORT = int(os.getenv("WAKE_PORT", "10400"))
 _EVENT_AUDIO_CHUNK = b"audio-chunk\n"
 _EVENT_DETECTION = "detection"
 
-# Minimum audio length before bothering to check (0.5 s at 16 kHz/16-bit/mono)
-_MIN_BYTES = 16000 * 2 // 2
+# Minimum audio length before bothering to check (0.5 s × 16 000 Hz × 2 bytes/sample)
+_MIN_BYTES = 16000
 
 
 def detect_wake_word(pcm_bytes: bytes) -> bool:

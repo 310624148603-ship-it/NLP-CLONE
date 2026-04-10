@@ -26,7 +26,8 @@ logger = logging.getLogger(__name__)
 _QDRANT_HOST = os.getenv("QDRANT_HOST", "qdrant")
 _QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 _COLLECTION = "nndl_driving_kb"
-_VECTOR_DIM = 128  # must match the embedding size below
+_VECTOR_DIM = 128          # must match the embedding size below
+_MIN_RELEVANCE_SCORE = 0.5  # cosine similarity threshold for accepting a RAG hit
 
 
 # ── tiny deterministic embedding (no ML model required) ──────────────────────
@@ -110,7 +111,7 @@ def query(question: str, top_k: int = 1) -> Optional[str]:
             limit=top_k,
             with_payload=True,
         )
-        if results and results[0].score >= 0.5:
+        if results and results[0].score >= _MIN_RELEVANCE_SCORE:
             return results[0].payload.get("answer")
     except Exception as exc:
         logger.warning("Qdrant search error: %s", exc)

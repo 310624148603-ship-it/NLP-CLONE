@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 _STT_HOST = os.getenv("STT_HOST", "vosk")
 _STT_PORT = int(os.getenv("STT_PORT", "10300"))
 
-# Minimum audio to attempt transcription (0.5 s)
-_MIN_BYTES = 16000 * 2 // 2
+# Minimum audio to attempt transcription (0.5 s × 16 000 Hz × 2 bytes/sample)
+_MIN_BYTES = 16000
 
 
 def transcribe(pcm_bytes: bytes) -> str:

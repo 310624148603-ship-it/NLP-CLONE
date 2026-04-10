@@ -65,9 +65,10 @@ def _try_piper(text: str) -> bytes | None:
     try:
         with socket.create_connection((_TTS_HOST, _TTS_PORT), timeout=5.0) as sock:
             payload = text.encode("utf-8")
+            import json as _json  # noqa: PLC0415
             header_json = (
                 f'{{"type":"synthesize","data":{{'
-                f'"text":"{text.replace(chr(34), chr(39))}"}},'
+                f'"text":{_json.dumps(text)}}},'
                 f'"data_length":0}}\n\n'
             ).encode()
             sock.sendall(header_json)
