@@ -1,0 +1,80 @@
+version: "3.9"
+
+networks:
+  voice_net:
+    driver: bridge
+
+volumes:
+  qdrant_data:
+
+services:
+  openwakeword:
+    image: rhasspy/wyoming-openwakeword
+    ports:
+      - "10400:10400"
+    command: --uri tcp://0.0.0.0:10400 --preload-model hey_jarvis
+    networks:
+      - voice_net
+
+  vosk:
+    image: rhasspy/wyoming-vosk
+    ports:
+      - "10300:10300"
+    volumes:
+      - ./models/vosk:/models/vosk
+    command: --uri tcp://0.0.0.0:10300 --model /models/vosk/model
+    networks:
+      - voice_net
+
+  piper:
+    image: rhasspy/wyoming-piper
+    ports:
+      - "10200:10200"
+    volumes:
+      - ./voices:/voices
+    environment:
+      - PIPER_VOICE=${PIPER_VOICE:-en_US-lessac-medium}
+    command: >
+      --uri tcp://0.0.0.0:10200
+      --voice /voices/${PIPER_VOICE:-en_US-lessac-medium}.onnx
+    networks:
+      - voice_net
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - voice_net
+
+  valhalla:
+    image: gisops/valhalla:latest
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./data/valhalla_tiles:/data/valhalla_tiles
+    environment:
+      - tile_dir=/data/valhalla_tiles
+    networks:
+      - voice_net
+
+  orchestrator:
+    build: ./orchestrator
+    ports:
+      - "9000:9000"
+    environment:
+      - WAKE_URI=tcp://openwakeword:10400
+      - STT_URI=tcp://vosk:10300
+      - TTS_URI=tcp://piper:10200
+      - QDRANT_URL=http://qdrant:6333
+      - VALHALLA_URL=http://valhalla:8002
+    depends_on:
+      - openwakeword
+      - vosk
+      - piper
+      - qdrant
+      - valhalla
+    networks:
+      - voice_net
