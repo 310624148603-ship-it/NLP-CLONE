@@ -29,12 +29,8 @@ from .stt import transcribe_audio
 from .tts import create_wav_bytes
 
 # ---------------------------------------------------------------------------
-# Logging
+# Logging — use module-level logger; uvicorn configures the root handler
 # ---------------------------------------------------------------------------
-logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "info").upper(),
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
 logger = logging.getLogger("orchestrator")
 
 # ---------------------------------------------------------------------------

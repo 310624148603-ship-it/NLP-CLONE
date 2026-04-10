@@ -41,7 +41,8 @@ SAMPLE_RATE = 16_000     # Hz
 CHANNELS = 1             # mono
 DTYPE = "int16"          # 16-bit PCM
 FRAME_SAMPLES = 320      # 20 ms worth of samples at 16 kHz
-FRAME_BYTES = FRAME_SAMPLES * 2  # 2 bytes per int16 sample = 640 bytes / frame
+FRAME_BYTES = FRAME_SAMPLES * 2  # 2 bytes per int16 sample = 640 bytes per frame
+RECEIVE_TIMEOUT_S = 30  # seconds to wait for WAV reply from orchestrator
 
 
 def record_audio(duration_s: float) -> np.ndarray:
@@ -137,7 +138,7 @@ def stream_and_receive(samples: np.ndarray, url: str) -> bytes:
     transcript = ""
 
     # Receive messages until we get a binary WAV reply
-    deadline = time.time() + 30  # 30-second timeout
+    deadline = time.time() + RECEIVE_TIMEOUT_S
     while time.time() < deadline:
         try:
             opcode, data = ws.recv_data()
