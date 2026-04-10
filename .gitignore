@@ -38,6 +38,14 @@ secrets/
 *.env
 
 
+# Voice Assistant — large binary assets (download separately, see RUNBOOK.md)
+models/
+voices/
+data/
+
+# Audio reply from mic client
+reply.wav
+
 # Logs & Telemetry Dumps
 *.log
 telemetry_dumps/

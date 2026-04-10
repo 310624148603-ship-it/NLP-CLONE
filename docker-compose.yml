@@ -1,0 +1,185 @@
+version: "3.9"
+
+# ============================================================
+# NNDL Offline Voice Assistant Stack
+# Tamil Nadu Driver Voice Assistant — 6-service Docker stack
+# ============================================================
+
+networks:
+  va_net:
+    driver: bridge
+
+volumes:
+  qdrant_storage:
+    driver: local
+
+services:
+
+  # ----------------------------------------------------------
+  # 1. Wake-word detection — Wyoming openWakeWord
+  #    Listens for "hey jarvis" trigger phrase
+  # ----------------------------------------------------------
+  openwakeword:
+    image: rhasspy/wyoming-openwakeword:latest
+    container_name: openwakeword
+    restart: unless-stopped
+    ports:
+      - "10400:10400"
+    command:
+      - --uri
+      - tcp://0.0.0.0:10400
+      - --preload-model
+      - hey_jarvis
+    networks:
+      - va_net
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 10400 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ----------------------------------------------------------
+  # 2. Speech-to-Text — Wyoming Vosk (offline)
+  #    Mount your Vosk model at ./models/vosk/model/
+  # ----------------------------------------------------------
+  vosk:
+    image: rhasspy/wyoming-vosk:latest
+    container_name: vosk
+    restart: unless-stopped
+    ports:
+      - "10300:10300"
+    volumes:
+      - ./models/vosk:/data
+    command:
+      - --uri
+      - tcp://0.0.0.0:10300
+      - --data-dir
+      - /data
+      - --download-dir
+      - /data
+    networks:
+      - va_net
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 10300 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ----------------------------------------------------------
+  # 3. Text-to-Speech — Wyoming Piper (offline)
+  #    Mount your Piper voice files at ./voices/
+  # ----------------------------------------------------------
+  piper:
+    image: rhasspy/wyoming-piper:latest
+    container_name: piper
+    restart: unless-stopped
+    ports:
+      - "10200:10200"
+    volumes:
+      - ./voices:/data
+    command:
+      - --uri
+      - tcp://0.0.0.0:10200
+      - --data-dir
+      - /data
+      - --download-dir
+      - /data
+    networks:
+      - va_net
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 10200 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ----------------------------------------------------------
+  # 4. Vector Database — Qdrant (for RAG)
+  #    Persistent storage via named volume
+  # ----------------------------------------------------------
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: "6333"
+      QDRANT__SERVICE__GRPC_PORT: "6334"
+    networks:
+      - va_net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ----------------------------------------------------------
+  # 5. Map-matching / Speed Limits — Valhalla
+  #    Mount your Valhalla tiles at ./data/valhalla_tiles/
+  # ----------------------------------------------------------
+  valhalla:
+    image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+    container_name: valhalla
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./data/valhalla_tiles:/custom_files
+    environment:
+      tile_urls: ""          # set to your PBF URL for auto-download
+      serve_tiles: "True"
+      use_tiles_ignore_pbf: "True"
+    networks:
+      - va_net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8002/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ----------------------------------------------------------
+  # 6. Orchestrator — FastAPI coordinator
+  #    Built from ./orchestrator/
+  # ----------------------------------------------------------
+  orchestrator:
+    build:
+      context: ./orchestrator
+      dockerfile: Dockerfile
+    container_name: orchestrator
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    depends_on:
+      - openwakeword
+      - vosk
+      - piper
+      - qdrant
+      - valhalla
+    environment:
+      OPENWAKEWORD_HOST: openwakeword
+      OPENWAKEWORD_PORT: "10400"
+      VOSK_HOST: vosk
+      VOSK_PORT: "10300"
+      PIPER_HOST: piper
+      PIPER_PORT: "10200"
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: "6333"
+      VALHALLA_HOST: valhalla
+      VALHALLA_PORT: "8002"
+      LOG_LEVEL: info
+    networks:
+      - va_net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
